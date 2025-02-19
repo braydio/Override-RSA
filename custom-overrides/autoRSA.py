@@ -369,7 +369,7 @@ if __name__ == "__main__":
             print(f"Received message from {message.author} (ID: {message.author.id}): {message.content}")
 
             # Process Order Flowbot commands
-            if message.author.id == 1275369263477166080:  # Order Flowbot ID
+            if message.author.id in {1275369263477166080, 1339755572702220318}: # Order Flowbot ID : Webhook ID
                 ctx = await bot.get_context(message)
                 if ctx.valid:
                     print("Invoking RSA command for Order Flowbot message.")
