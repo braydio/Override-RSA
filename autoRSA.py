@@ -7,10 +7,11 @@ import os
 import sys
 import traceback
 
-# Check Python version (minimum 3.10, maximum 3.13)
+# Check Python version (minimum 3.10, maximum 3.12)
 print("Python version:", sys.version)
-if sys.version_info < (3, 10) or sys.version_info >= (3, 14):
-    print("Error: Python version must be minimum 3.10 or maximum 3.13")
+if sys.version_info < (3, 10) or sys.version_info >= (3, 13):
+    print("Error: Python version must be between 3.10 and 3.12")
+    sys.exit(1)
 print()
 
 try:
@@ -145,7 +146,6 @@ def fun_run(orderObj: stockOrder, command, botObj=None, loop=None):
                     "fennel",
                     "firstrade",
                     "public",
-                    "robinhood",
                 ]:
                     # Requires bot object and loop
                     orderObj.set_logged_in(
@@ -361,19 +361,28 @@ if __name__ == "__main__":
                     "ERROR: Invalid channel ID, please check your DISCORD_CHANNEL in your .env file and try again"
                 )
                 os._exit(1)  # Special exit code to restart docker container
-            await channel.send("Discord bot is started...")
+            await channel.send("Running with custom overrides from bind mount 'custom-overrides'.")
 
-        # Process the message only if it's from the specified channel
+        # Custom overrides to run off Order Flowbot orders
         @bot.event
         async def on_message(message):
-            if message.channel.id == DISCORD_CHANNEL:
-                await bot.process_commands(message)
+            print(f"Received message from {message.author} (ID: {message.author.id}): {message.content}")
+
+            # Process Order Flowbot commands
+            if message.author.id in {1275369263477166080, 1339755572702220318}: # Order Flowbot ID : Webhook ID
+                ctx = await bot.get_context(message)
+                if ctx.valid:
+                    print("Invoking RSA command for Order Flowbot message.")
+                    await bot.invoke(ctx)
+
+            # Process regular commands
+            await bot.process_commands(message)
 
         # Bot ping-pong
         @bot.command(name="ping")
         async def ping(ctx):
-            print("ponged")
-            await ctx.send("pong")
+            print("Using custom overrides from bind mount F:/Shared/Docker/volumes/custom-override.yaml")
+            await ctx.send("Using cusom overrides from bind mount F:/Shared/Docker/volumes/custom-override.yaml")
 
         # Help command
         @bot.command()

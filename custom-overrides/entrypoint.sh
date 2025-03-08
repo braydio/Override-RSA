@@ -11,6 +11,14 @@ else
     echo "No override for autoRSA.py found."
 fi
 
+# Check if override exists and copy it to replace fennelAPI
+if [ -f "/app/custom-overrides/fennelAPI" ]; then
+    echo "Found override for fennelAPI. Copying..."
+    cp /app/custom-overrides/fennelAPI /app/fennelAPI
+else
+    echo "No override for fennelAPI found."
+fi
+
 # Start X virtual framebuffer in the background
 echo "Starting X virtual framebuffer (Xvfb) in background..."
 Xvfb -ac :99 -screen 0 1280x1024x16 &
