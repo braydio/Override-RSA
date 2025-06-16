@@ -14,6 +14,7 @@ from time import sleep
 
 from dotenv import load_dotenv
 from schwab_api import Schwab
+from schwab_api import urls
 
 from helperAPI import Brokerage, maskString, printAndDiscord, printHoldings, stockOrder
 
@@ -27,6 +28,10 @@ def schwab_init(SCHWAB_EXTERNAL=None):
         Comma separated credentials in the form
         ``username:password:totp``. When ``None``, credentials are read from
         the ``SCHWAB`` environment variable.
+
+    The function prints detailed information about each login attempt and, on
+    failure, logs the HTTP response from the Schwab holdings endpoint to aid
+    debugging.
     """
 
     # Initialize .env file and gather credentials
@@ -66,8 +71,17 @@ def schwab_init(SCHWAB_EXTERNAL=None):
                 totp_secret=totp,
             )
             print(f"Login result for {name}: {success}")
-
-            account_info = schwab.get_account_info_v2()
+            try:
+                account_info = schwab.get_account_info_v2()
+            except Exception as info_error:
+                print(f"Error retrieving account info for {name}: {info_error}")
+                sess = schwab.get_session()
+                r = sess.get(urls.positions_v2(), headers=schwab.headers)
+                print(f"positions_v2 status_code={r.status_code}")
+                snippet = r.text[:500].replace("\n", " ")
+                print(f"positions_v2 response (first 500 chars): {snippet}")
+                raise\
+                
             account_list = list(account_info.keys())
             print_accounts = [maskString(a) for a in account_list]
             print(f"The following Schwab accounts were found: {print_accounts}")
