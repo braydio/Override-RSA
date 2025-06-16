@@ -1,3 +1,12 @@
+"""Chase brokerage automation module.
+
+This module contains helper functions to log in to Chase brokerage accounts,
+retrieve holdings, and place transactions.  The functionality relies on the
+unofficial ``chase`` Python package which controls Playwright browsers.  Extra
+debug logging is provided to aid troubleshooting when running under threaded
+contexts or from the Discord bot.
+"""
+
 # Donald Ryan Gullett(MaxxRK)
 # Chase API
 
@@ -115,11 +124,15 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
     # Create brokerage class object and call it chase
     chase_obj = Brokerage("Chase")
     name = f"Chase {index}"
+    ch_session = None
     try:
-        # Split the login into into seperate items
+        # Split the login into seperate items
         account = account.split(":")
         # If the debug flag is present, use it, else set it to false
         debug = bool(account[3]) if len(account) == 4 else False
+        print(
+            f"Initializing session for {name} with headless={headless} debug={debug}"
+        )
         # Create a ChaseSession class object which automatically configures and opens a browser
         ch_session = session.ChaseSession(
             title=f"chase_{index}",
@@ -129,6 +142,7 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
         )
         # Login to chase
         need_second = ch_session.login(account[0], account[1], account[2])
+        print(f"Login returned two-factor required: {need_second}")
         # If 2FA is present, ask for code
         if need_second:
             if botObj is None and loop is None:
@@ -158,7 +172,8 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
             print_accounts.append(account.mask)
         print(f"The following Chase accounts were found: {print_accounts}")
     except Exception as e:
-        ch_session.close_browser()
+        if ch_session is not None:
+            ch_session.close_browser()
         print(f"Error logging in to Chase: {e}")
         print(traceback.format_exc())
         return None
