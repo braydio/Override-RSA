@@ -1,3 +1,10 @@
+"""Schwab brokerage automation module.
+
+This module provides helpers for logging in to Schwab accounts, retrieving
+holdings, and placing trades using the :mod:`schwab_api` package.  Additional
+debug logging is included to troubleshoot login and trading issues.
+"""
+
 # Nelson Dane
 # Schwab API
 
@@ -7,37 +14,74 @@ from time import sleep
 
 from dotenv import load_dotenv
 from schwab_api import Schwab
+from schwab_api import urls
 
 from helperAPI import Brokerage, maskString, printAndDiscord, printHoldings, stockOrder
 
 
 def schwab_init(SCHWAB_EXTERNAL=None):
-    # Initialize .env file
+    """Log into Schwab and return a :class:`Brokerage` object.
+
+    Parameters
+    ----------
+    SCHWAB_EXTERNAL : str, optional
+        Comma separated credentials in the form
+        ``username:password:totp``. When ``None``, credentials are read from
+        the ``SCHWAB`` environment variable.
+
+    The function prints detailed information about each login attempt and, on
+    failure, logs the HTTP response from the Schwab holdings endpoint to aid
+    debugging.
+    """
+
+    # Initialize .env file and gather credentials
     load_dotenv()
-    # Import Schwab account
-    if not os.getenv("SCHWAB") and SCHWAB_EXTERNAL is None:
+    schwab_env = os.getenv("SCHWAB")
+    if not schwab_env and SCHWAB_EXTERNAL is None:
         print("Schwab not found, skipping...")
         return None
+
     accounts = (
-        os.environ["SCHWAB"].strip().split(",")
-        if SCHWAB_EXTERNAL is None
-        else SCHWAB_EXTERNAL.strip().split(",")
+        schwab_env.strip().split(",") if SCHWAB_EXTERNAL is None else SCHWAB_EXTERNAL.strip().split(",")
     )
-    # Log in to Schwab account
+
+    print(f"Accounts provided: {accounts}")
     print("Logging in to Schwab...")
+
     schwab_obj = Brokerage("Schwab")
     for account in accounts:
         index = accounts.index(account) + 1
         name = f"Schwab {index}"
         try:
             account = account.split(":")
-            schwab = Schwab(session_cache=f"./creds/schwab{index}.json")
-            schwab.login(
-                username=account[0],
-                password=account[1],
-                totp_secret=None if account[2] == "NA" else account[2],
+            username = account[0]
+            print(
+                f"Starting login {index} for {maskString(username)} with cache ./creds/schwab{index}.json"
             )
-            account_info = schwab.get_account_info_v2()
+            schwab = Schwab(session_cache=f"./creds/schwab{index}.json")
+            totp = None if account[2] == "NA" else account[2]
+            if totp:
+                print("Using provided TOTP secret")
+            else:
+                print("No TOTP secret provided")
+
+            success = schwab.login(
+                username=username,
+                password=account[1],
+                totp_secret=totp,
+            )
+            print(f"Login result for {name}: {success}")
+
+            try:
+                account_info = schwab.get_account_info_v2()
+            except Exception as info_error:
+                print(f"Error retrieving account info for {name}: {info_error}")
+                sess = schwab.get_session()
+                r = sess.get(urls.positions_v2(), headers=schwab.headers)
+                print(f"positions_v2 status_code={r.status_code}")
+                snippet = r.text[:500].replace("\n", " ")
+                print(f"positions_v2 response (first 500 chars): {snippet}")
+                raise
             account_list = list(account_info.keys())
             print_accounts = [maskString(a) for a in account_list]
             print(f"The following Schwab accounts were found: {print_accounts}")
@@ -56,24 +100,22 @@ def schwab_init(SCHWAB_EXTERNAL=None):
 
 
 def schwab_holdings(schwab_o: Brokerage, loop=None):
-    # Get holdings on each account
+    """Retrieve holdings for all logged in Schwab accounts."""
+
     for key in schwab_o.get_account_numbers():
+        print(f"Gathering holdings for {key}")
         obj: Schwab = schwab_o.get_logged_in_objects(key)
         all_holdings = obj.get_account_info_v2()
         for account in schwab_o.get_account_numbers(key):
+            print(f"Processing account {maskString(account)}")
             try:
                 holdings = all_holdings[account]["positions"]
                 for item in holdings:
-                    sym = item["symbol"]
-                    if sym == "":
-                        sym = "Unknown"
+                    sym = item["symbol"] or "Unknown"
                     mv = round(float(item["market_value"]), 2)
                     qty = float(item["quantity"])
                     # Schwab doesn't return current price, so we have to calculate it
-                    if qty == 0:
-                        current_price = 0
-                    else:
-                        current_price = round(mv / qty, 2)
+                    current_price = 0 if qty == 0 else round(mv / qty, 2)
                     schwab_o.set_holdings(key, account, sym, qty, current_price)
             except Exception as e:
                 printAndDiscord(f"{key} {account}: Error getting holdings: {e}", loop)
@@ -82,6 +124,8 @@ def schwab_holdings(schwab_o: Brokerage, loop=None):
 
 
 def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
+    """Execute trades on each Schwab account using ``orderObj``."""
+
     print()
     print("==============================")
     print("Schwab")
@@ -89,7 +133,9 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
     print()
     # Use each account (unless specified in .env)
     purchase_accounts = os.getenv("SCHWAB_ACCOUNT_NUMBERS", "").strip().split(":")
+    print(f"Restricted accounts: {purchase_accounts if purchase_accounts != [''] else 'None'}")
     for s in orderObj.get_stocks():
+        print(f"Submitting orders for {s}")
         for key in schwab_o.get_account_numbers():
             printAndDiscord(
                 f"{key} {orderObj.get_action()}ing {orderObj.get_amount()} {s} @ {orderObj.get_price()}",
@@ -98,6 +144,7 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
             obj: Schwab = schwab_o.get_logged_in_objects(key)
             for account in schwab_o.get_account_numbers(key):
                 print_account = maskString(account)
+                print(f"Handling account {print_account}")
                 if (
                     purchase_accounts != [""]
                     and orderObj.get_action().lower() != "sell"
@@ -120,6 +167,7 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
                         account_id=account,
                         dry_run=orderObj.get_dry(),
                     )
+                    print(f"trade_v2 returned success={success} messages={messages}")
                     printAndDiscord(
                         (
                             f"{key} account {print_account}: The order verification was "
@@ -137,6 +185,7 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
                             account_id=account,
                             dry_run=orderObj.get_dry(),
                         )
+                        print(f"trade retry returned success={success} messages={messages}")
                         printAndDiscord(
                             (
                                 f"{key} account {print_account}: The order verification was "
@@ -156,3 +205,4 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
                     )
                     print(traceback.format_exc())
                 sleep(1)
+
