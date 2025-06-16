@@ -80,8 +80,8 @@ def schwab_init(SCHWAB_EXTERNAL=None):
                 print(f"positions_v2 status_code={r.status_code}")
                 snippet = r.text[:500].replace("\n", " ")
                 print(f"positions_v2 response (first 500 chars): {snippet}")
-                raise\
-                
+                raise
+
             account_list = list(account_info.keys())
             print_accounts = [maskString(a) for a in account_list]
             print(f"The following Schwab accounts were found: {print_accounts}")
