@@ -1,3 +1,12 @@
+"""Chase brokerage automation module.
+
+This module contains helper functions to log in to Chase brokerage accounts,
+retrieve holdings, and place transactions.  The functionality relies on the
+unofficial ``chase`` Python package which controls Playwright browsers.  Extra
+debug logging is provided to aid troubleshooting when running under threaded
+contexts or from the Discord bot.
+"""
+
 # Donald Ryan Gullett(MaxxRK)
 # Chase API
 
@@ -15,33 +24,52 @@ from helperAPI import (
     getOTPCodeDiscord,
     printAndDiscord,
     printHoldings,
-    stockOrder
+    stockOrder,
 )
 
 
 def chase_run(
     orderObj: stockOrder, command=None, botObj=None, loop=None, CHASE_EXTERNAL=None
 ):
+    """Entry point for Chase actions.
+
+    This function gathers credentials, logs in to each Chase account and then
+    either fetches holdings or executes a transaction.  Additional logging has
+    been added to help diagnose issues when this function is executed in a
+    thread.
+    """
+
     # Initialize .env file
     load_dotenv()
-    # Import Chase account
-    if not os.getenv("CHASE") and CHASE_EXTERNAL is None:
+
+    print("Starting chase_run...")
+
+    # Import Chase account credentials
+    chase_env = os.getenv("CHASE")
+    if not chase_env and CHASE_EXTERNAL is None:
         print("Chase not found, skipping...")
         return None
+
     accounts = (
-        os.environ["CHASE"].strip().split(",")
+        chase_env.strip().split(",")
         if CHASE_EXTERNAL is None
         else CHASE_EXTERNAL.strip().split(",")
     )
+    print(f"Accounts provided: {accounts}")
+
     # Get headless flag
     headless = os.getenv("HEADLESS", "true").lower() == "true"
+    print(f"Headless mode: {headless}")
+
     # Set the functions to be run
     _, second_command = command
+    print(f"Running command: {second_command}")
 
     # For each set of login info, i.e. seperate chase accounts
     for account in accounts:
         # Start at index 1 and go to how many logins we have
         index = accounts.index(account) + 1
+        print(f"Processing Chase login {index}: {account}")
         # Receive the chase broker class object and the AllAccount object related to it
         chase_details = chase_init(
             account=account,
@@ -51,14 +79,20 @@ def chase_run(
             loop=loop,
         )
         if chase_details is not None:
+            print(f"Login successful for Chase {index}")
             orderObj.set_logged_in(chase_details[0], "chase")
             if second_command == "_holdings":
+                print(f"Fetching holdings for Chase {index}")
                 chase_holdings(chase_details[0], chase_details[1], loop=loop)
             # Only other option is _transaction
             else:
+                print(f"Executing transaction for Chase {index}")
                 chase_transaction(
                     chase_details[0], chase_details[1], orderObj, loop=loop
                 )
+        else:
+            print(f"Login failed for Chase {index}")
+    print("chase_run complete")
     return None
 
 
@@ -90,11 +124,15 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
     # Create brokerage class object and call it chase
     chase_obj = Brokerage("Chase")
     name = f"Chase {index}"
+    ch_session = None
     try:
-        # Split the login into into seperate items
+        # Split the login into seperate items
         account = account.split(":")
         # If the debug flag is present, use it, else set it to false
         debug = bool(account[3]) if len(account) == 4 else False
+        print(
+            f"Initializing session for {name} with headless={headless} debug={debug}"
+        )
         # Create a ChaseSession class object which automatically configures and opens a browser
         ch_session = session.ChaseSession(
             title=f"chase_{index}",
@@ -104,6 +142,7 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
         )
         # Login to chase
         need_second = ch_session.login(account[0], account[1], account[2])
+        print(f"Login returned two-factor required: {need_second}")
         # If 2FA is present, ask for code
         if need_second:
             if botObj is None and loop is None:
@@ -133,7 +172,8 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
             print_accounts.append(account.mask)
         print(f"The following Chase accounts were found: {print_accounts}")
     except Exception as e:
-        ch_session.close_browser()
+        if ch_session is not None:
+            ch_session.close_browser()
         print(f"Error logging in to Chase: {e}")
         print(traceback.format_exc())
         return None
@@ -149,14 +189,10 @@ def chase_holdings(chase_o: Brokerage, all_accounts: ch_account.AllAccount, loop
         all_accounts (AllAccount): AllAccount object that holds account information.
         loop (AbstractEventLoop): The event loop to be used if present.
     """
-    # Get holdings on each account. This loop only ever runs once.
     for key in chase_o.get_account_numbers():
+        ch_session: session.ChaseSession = chase_o.get_logged_in_objects(key)
         try:
-            # Retrieve account masks and iterate through them
             for _, account in enumerate(chase_o.get_account_numbers(key)):
-                # Retrieve the chase session
-                ch_session: session.ChaseSession = chase_o.get_logged_in_objects(key)
-                # Get the account ID accociated with mask
                 account_id = get_account_id(all_accounts.account_connectors, account)
                 data = symbols.SymbolHoldings(account_id, ch_session)
                 success = data.get_holdings()
@@ -191,12 +227,12 @@ def chase_holdings(chase_o: Brokerage, all_accounts: ch_account.AllAccount, loop
                                 qty = data.positions[i]["tradedUnitQuantity"]
                             chase_o.set_holdings(key, account, sym, qty, current_price)
         except Exception as e:
-            ch_session.close_browser()
             printAndDiscord(f"{key} {account}: Error getting holdings: {e}", loop)
             print(traceback.format_exc())
-            continue
-        printHoldings(chase_o, loop)
-    ch_session.close_browser()
+        else:
+            printHoldings(chase_o, loop)
+        finally:
+            ch_session.close_browser()
 
 
 def chase_transaction(
@@ -222,18 +258,13 @@ def chase_transaction(
     print("==============================")
     print()
 
-    # Buy on each account
     for ticker in orderObj.get_stocks():
-
-        # This loop should only run once, but it provides easy access to the chase session by using key to get it back from
-        # the chase_obj via get_logged_in_objects
         for key in chase_obj.get_account_numbers():
 
             # Declare for later
             price_type = order.PriceType.MARKET
             limit_price = 0.0
 
-            # Load the chase session
             ch_session: session.ChaseSession = chase_obj.get_logged_in_objects(key)
 
             # Determine limit or market for buy orders
@@ -265,7 +296,6 @@ def chase_transaction(
             )
             try:
                 print(chase_obj.get_account_numbers())
-                # For each account number "mask" attached to "Chase_#" complete the order
                 for account in chase_obj.get_account_numbers(key):
                     target_account_id = get_account_id(
                         all_accounts.account_connectors, account
@@ -345,7 +375,7 @@ def chase_transaction(
                 printAndDiscord(f"{key} {account}: Error submitting order: {e}", loop)
                 print(traceback.format_exc())
                 continue
-    ch_session.close_browser()
+        ch_session.close_browser()
     printAndDiscord(
         "All Chase transactions complete",
         loop,
