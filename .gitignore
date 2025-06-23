@@ -12,3 +12,5 @@ test*
 .vscode/
 *workspace
 *.zip
+*.env
+creds/*
