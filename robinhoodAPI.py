@@ -84,6 +84,10 @@ def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None
             totp_secret = account_parts[2] if len(account_parts) > 2 else None
             if totp_secret and totp_secret.lower() in {"na", "none", "false"}:
                 totp_secret = None
+            printAndDiscord(
+                f"{name}: TOTP secret {'provided' if totp_secret else 'not provided'}",
+                loop,
+            )
             if totp_secret:
                 printAndDiscord(f"{name}: Using TOTP MFA", loop)
             mfa_code = pyotp.TOTP(totp_secret).now() if totp_secret else None
@@ -99,6 +103,7 @@ def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None
                     pickle_name=name,
                     mfa_code=mfa_code,
                 )
+                printAndDiscord(f"{name}: Login response: {login_data}", loop)
             except Exception as e:  # noqa: BLE001
                 printAndDiscord(f"{name}: Login exception: {e}", loop)
                 print(traceback.format_exc())
@@ -116,7 +121,10 @@ def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None
             try:
                 all_accounts = rh.account.load_account_profile(dataType="results")
             except Exception as e:  # noqa: BLE001
-                printAndDiscord(f"{name}: Account load failed: {e}", loop)
+                printAndDiscord(
+                    f"{name}: Account load failed: {e}. login_data={login_data}",
+                    loop,
+                )
                 print(traceback.format_exc())
                 continue
             for a in all_accounts:
