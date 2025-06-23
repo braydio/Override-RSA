@@ -1,16 +1,32 @@
-# Nelson Dane
-# Robinhood API
+"""Utilities for interacting with Robinhood accounts.
+
+This module wraps :mod:`robin_stocks` to handle logging in, retrieving
+holdings, and submitting basic stock orders.  Credentials are loaded from
+environment variables or passed in directly and session cookies are cached
+under the ``creds`` directory.
+"""
 
 import os
 import traceback
 
+import pyotp
 import robin_stocks.robinhood as rh
 from dotenv import load_dotenv
 
 from helperAPI import Brokerage, maskString, printAndDiscord, printHoldings, stockOrder
 
 
-def login_with_cache(pickle_path, pickle_name):
+def login_with_cache(pickle_path: str, pickle_name: str) -> None:
+    """Load a cached Robinhood session from ``pickle_path``.
+
+    Parameters
+    ----------
+    pickle_path:
+        Directory containing the cached credentials.
+    pickle_name:
+        Filename prefix used when the session was saved.
+    """
+
     rh.login(
         expiresIn=86400 * 30,  # 30 days
         pickle_path=pickle_path,
@@ -18,7 +34,24 @@ def login_with_cache(pickle_path, pickle_name):
     )
 
 
-def robinhood_init(ROBINHOOD_EXTERNAL=None, botObj=None, loop=None):
+def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None):
+    """Log into one or more Robinhood accounts.
+
+    Parameters
+    ----------
+    ROBINHOOD_EXTERNAL:
+        Optional comma separated string of credentials in the form
+        ``username:password:totp``. When ``None`` (default), credentials are
+        read from the ``ROBINHOOD`` environment variable.
+    botObj, loop:
+        Optional Discord objects used for logging messages.
+
+    Returns
+    -------
+    Brokerage | None
+        A :class:`Brokerage` instance on success, otherwise ``None``.
+    """
+
     # Initialize .env file
     load_dotenv()
     # Import Robinhood account
@@ -42,14 +75,19 @@ def robinhood_init(ROBINHOOD_EXTERNAL=None, botObj=None, loop=None):
             loop,
         )
         try:
-            account = account.split(":")
+            account_parts = account.split(":")
+            totp_secret = account_parts[2] if len(account_parts) > 2 else None
+            if totp_secret and totp_secret.lower() in {"na", "none", "false"}:
+                totp_secret = None
+            mfa_code = pyotp.TOTP(totp_secret).now() if totp_secret else None
             rh.login(
-                username=account[0],
-                password=account[1],
+                username=account_parts[0],
+                password=account_parts[1],
                 store_session=True,
                 expiresIn=86400 * 30,  # 30 days
                 pickle_path="./creds/",
                 pickle_name=name,
+                mfa_code=mfa_code,
             )
             rh_obj.set_logged_in_object(name, rh)
             # Load all accounts
@@ -78,7 +116,8 @@ def robinhood_init(ROBINHOOD_EXTERNAL=None, botObj=None, loop=None):
     return rh_obj
 
 
-def robinhood_holdings(rho: Brokerage, loop=None):
+def robinhood_holdings(rho: Brokerage, loop=None) -> None:
+    """Print holdings for each logged in Robinhood account."""
     for key in rho.get_account_numbers():
         for account in rho.get_account_numbers(key):
             obj: rh = rho.get_logged_in_objects(key)
@@ -106,7 +145,8 @@ def robinhood_holdings(rho: Brokerage, loop=None):
     printHoldings(rho, loop)
 
 
-def robinhood_transaction(rho: Brokerage, orderObj: stockOrder, loop=None):
+def robinhood_transaction(rho: Brokerage, orderObj: stockOrder, loop=None) -> None:
+    """Execute a basic buy or sell order for each account."""
     print()
     print("==============================")
     print("Robinhood")
