@@ -50,6 +50,11 @@ def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None
     -------
     Brokerage | None
         A :class:`Brokerage` instance on success, otherwise ``None``.
+
+    Notes
+    -----
+    Login errors are logged and the function will continue with remaining
+    accounts rather than raising an exception.
     """
 
     # Initialize .env file
@@ -83,15 +88,21 @@ def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None
                 printAndDiscord(f"{name}: Using TOTP MFA", loop)
             mfa_code = pyotp.TOTP(totp_secret).now() if totp_secret else None
 
-            login_data = rh.login(
-                username=account_parts[0],
-                password=account_parts[1],
-                store_session=True,
-                expiresIn=86400 * 30,  # 30 days
-                pickle_path="./creds/",
-                pickle_name=name,
-                mfa_code=mfa_code,
-            )
+            printAndDiscord(f"{name}: Starting login process...", loop)
+            try:
+                login_data = rh.login(
+                    username=account_parts[0],
+                    password=account_parts[1],
+                    store_session=True,
+                    expiresIn=86400 * 30,  # 30 days
+                    pickle_path="./creds/",
+                    pickle_name=name,
+                    mfa_code=mfa_code,
+                )
+            except Exception as e:  # noqa: BLE001
+                printAndDiscord(f"{name}: Login exception: {e}", loop)
+                print(traceback.format_exc())
+                continue
 
             if not login_data or not login_data.get("access_token"):
                 printAndDiscord(
@@ -102,7 +113,12 @@ def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None
 
             rh_obj.set_logged_in_object(name, rh)
             # Load all accounts
-            all_accounts = rh.account.load_account_profile(dataType="results")
+            try:
+                all_accounts = rh.account.load_account_profile(dataType="results")
+            except Exception as e:  # noqa: BLE001
+                printAndDiscord(f"{name}: Account load failed: {e}", loop)
+                print(traceback.format_exc())
+                continue
             for a in all_accounts:
                 if a["account_number"] in all_account_numbers:
                     continue
@@ -119,11 +135,11 @@ def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None
                 print(
                     f"Found {a['brokerage_account_type']} account {maskString(a['account_number'])}"
                 )
-        except Exception as e:
-            print(f"Error: Unable to log in to Robinhood: {e}")
+        except Exception as e:  # noqa: BLE001
+            printAndDiscord(f"Error logging into {name}: {e}", loop)
             print(traceback.format_exc())
-            return None
-        print(f"Logged in to {name}")
+            continue
+        printAndDiscord(f"Logged in to {name}", loop)
     return rh_obj
 
 
