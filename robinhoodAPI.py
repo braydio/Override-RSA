@@ -79,8 +79,11 @@ def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None
             totp_secret = account_parts[2] if len(account_parts) > 2 else None
             if totp_secret and totp_secret.lower() in {"na", "none", "false"}:
                 totp_secret = None
+            if totp_secret:
+                printAndDiscord(f"{name}: Using TOTP MFA", loop)
             mfa_code = pyotp.TOTP(totp_secret).now() if totp_secret else None
-            rh.login(
+
+            login_data = rh.login(
                 username=account_parts[0],
                 password=account_parts[1],
                 store_session=True,
@@ -89,6 +92,14 @@ def robinhood_init(ROBINHOOD_EXTERNAL: str | None = None, botObj=None, loop=None
                 pickle_name=name,
                 mfa_code=mfa_code,
             )
+
+            if not login_data or not login_data.get("access_token"):
+                printAndDiscord(
+                    f"{name}: Login failed. Response: {login_data}",
+                    loop,
+                )
+                continue
+
             rh_obj.set_logged_in_object(name, rh)
             # Load all accounts
             all_accounts = rh.account.load_account_profile(dataType="results")
