@@ -379,7 +379,7 @@ Your `WEBULL_USERNAME` can be your email or phone number. If using a phone numbe
 To get your Webull DID, follow this [guide](https://github.com/tedchou12/webull/wiki/Workaround-for-Login-%E2%80%90-Method-2).
 
 ### Vanguard
-Made by [MaxxRK](https://github.com/MaxxRK/) using the [vanguard-api](https://github.com/MaxxRK/vanguard-api). Go give them a ⭐
+Made by [MaxxRK](https://github.com/MaxxRK/) using the [vanguard-api](https://github.com/MaxxRK/vanguard-api) (>=0.3.1). Go give them a ⭐
 
 Required `.env` variables:
 - `VANGUARD_USERNAME`
