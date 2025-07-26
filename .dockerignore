@@ -1,0 +1,10 @@
+# Ignore everything
+*
+
+# Main files
+!autoRSA.py
+!entrypoint.sh
+!requirements.txt
+
+# Broker APIs
+!**/*API*.py
