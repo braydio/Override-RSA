@@ -1,0 +1,15 @@
+services:
+    auto-rsa:
+        build: 
+            context: .
+            dockerfile: Dockerfile
+        container_name: braydio-rsa
+        # image: . # or change to other branch you want to use
+        # uncomment this line if you want to build the image locally with "docker compose up -d --build"
+        restart: unless-stopped
+        env_file:
+            - .env
+        tty: true
+        volumes:
+            - ./creds:/app/creds
+            - ./custom-overrides/autoRSA.py:/app/autoRSA.py

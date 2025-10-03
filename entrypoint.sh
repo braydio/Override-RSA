@@ -1,5 +1,5 @@
 #!/bin/bash
-
+echo "Intiializing from entrypoint..."
 # Remove any Xvfb lock if it exists
 rm -f /tmp/.X99-lock
 
