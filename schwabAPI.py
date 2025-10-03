@@ -13,8 +13,7 @@ import traceback
 from time import sleep
 
 from dotenv import load_dotenv
-from schwab_api import Schwab
-from schwab_api import urls
+from schwab_api import Schwab, urls
 
 from helperAPI import Brokerage, maskString, printAndDiscord, printHoldings, stockOrder
 
@@ -42,7 +41,9 @@ def schwab_init(SCHWAB_EXTERNAL=None):
         return None
 
     accounts = (
-        schwab_env.strip().split(",") if SCHWAB_EXTERNAL is None else SCHWAB_EXTERNAL.strip().split(",")
+        schwab_env.strip().split(",")
+        if SCHWAB_EXTERNAL is None
+        else SCHWAB_EXTERNAL.strip().split(",")
     )
 
     print(f"Accounts provided: {accounts}")
@@ -134,7 +135,9 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
     print()
     # Use each account (unless specified in .env)
     purchase_accounts = os.getenv("SCHWAB_ACCOUNT_NUMBERS", "").strip().split(":")
-    print(f"Restricted accounts: {purchase_accounts if purchase_accounts != [''] else 'None'}")
+    print(
+        f"Restricted accounts: {purchase_accounts if purchase_accounts != [''] else 'None'}"
+    )
     for s in orderObj.get_stocks():
         print(f"Submitting orders for {s}")
         for key in schwab_o.get_account_numbers():
@@ -186,7 +189,9 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
                             account_id=account,
                             dry_run=orderObj.get_dry(),
                         )
-                        print(f"trade retry returned success={success} messages={messages}")
+                        print(
+                            f"trade retry returned success={success} messages={messages}"
+                        )
                         printAndDiscord(
                             (
                                 f"{key} account {print_account}: The order verification was "
@@ -206,4 +211,3 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
                     )
                     print(traceback.format_exc())
                 sleep(1)
-
