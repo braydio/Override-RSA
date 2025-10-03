@@ -130,9 +130,7 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
         account = account.split(":")
         # If the debug flag is present, use it, else set it to false
         debug = bool(account[3]) if len(account) == 4 else False
-        print(
-            f"Initializing session for {name} with headless={headless} debug={debug}"
-        )
+        print(f"Initializing session for {name} with headless={headless} debug={debug}")
         # Create a ChaseSession class object which automatically configures and opens a browser
         ch_session = session.ChaseSession(
             title=f"chase_{index}",

@@ -1,28 +1,23 @@
 import asyncio
+import logging
 import os
 import traceback
 
 from dotenv import load_dotenv
 from fennel_invest_api import Fennel
+from fennel_invest_api.fennel import Brokerage, Fennel
 
 from helperAPI import (
     Brokerage,
     getOTPCodeDiscord,
     printAndDiscord,
     printHoldings,
-    stockOrder
+    stockOrder,
 )
-
-
-import os
-import traceback
-import logging
-import asyncio
-from dotenv import load_dotenv
-from fennel_invest_api.fennel import Fennel, Brokerage
 
 # Configure logging to show debug messages.
 logging.basicConfig(level=logging.DEBUG)
+
 
 def get_otp_and_login(fb, account, name, botObj, loop):
     """
@@ -40,6 +35,7 @@ def get_otp_and_login(fb, account, name, botObj, loop):
     # Log the OTP code before using it (be careful with logging sensitive data in production)
     logging.debug(f"{name}: Attempting login with OTP code: {otp_code}")
     fb.login(email=account, wait_for_code=False, code=otp_code)
+
 
 def fennel_init(FENNEL_EXTERNAL=None, botObj=None, loop=None):
     load_dotenv()
@@ -60,10 +56,14 @@ def fennel_init(FENNEL_EXTERNAL=None, botObj=None, loop=None):
             fb = Fennel(filename=f"fennel{index + 1}.pkl", path="./creds/")
             try:
                 if botObj is None and loop is None:
-                    logging.debug(f"{name}: Logging in from CLI (waiting for OTP if required)...")
+                    logging.debug(
+                        f"{name}: Logging in from CLI (waiting for OTP if required)..."
+                    )
                     fb.login(email=account, wait_for_code=True)
                 else:
-                    logging.debug(f"{name}: Logging in from Discord (not waiting for OTP initially)...")
+                    logging.debug(
+                        f"{name}: Logging in from Discord (not waiting for OTP initially)..."
+                    )
                     fb.login(email=account, wait_for_code=False)
             except Exception as e:
                 if "2FA" in str(e) and botObj is not None and loop is not None:
@@ -78,10 +78,12 @@ def fennel_init(FENNEL_EXTERNAL=None, botObj=None, loop=None):
             account_ids = fb.get_account_ids()
             logging.debug(f"{name}: Account IDs received: {account_ids}")
             fennel_obj.set_logged_in_object(name, fb, "fb")
-            
+
             for i, an in enumerate(account_ids):
                 account_name = f"Account {i + 1}"
-                logging.debug(f"{name}: Retrieving portfolio summary for {account_name} (account id: {an})...")
+                logging.debug(
+                    f"{name}: Retrieving portfolio summary for {account_name} (account id: {an})..."
+                )
                 b = fb.get_portfolio_summary(an)
                 fennel_obj.set_account_number(name, account_name)
                 fennel_obj.set_account_totals(
@@ -98,7 +100,6 @@ def fennel_init(FENNEL_EXTERNAL=None, botObj=None, loop=None):
             continue
     logging.info("Finished logging into Fennel!")
     return fennel_obj
-
 
 
 def fennel_holdings(fbo: Brokerage, loop=None):
