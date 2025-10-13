@@ -61,18 +61,50 @@ def wellsfargo_init(botObj, WELLSFARGO_EXTERNAL=None, DOCKER=False, loop=None):
             WebDriverWait(driver, 20).until(check_if_page_loaded)
             # Login
             try:
-                username_field = driver.find_element(By.XPATH, "//*[@id='j_username']")
-                type_slowly(username_field, account[0])
-                # Wait for the password field and enter the password
-                password_field = driver.find_element(By.XPATH, "//*[@id='j_password']")
-                type_slowly(password_field, account[1])
+                username = account[0].strip()
+                password = account[1].strip()
 
-                login_button = WebDriverWait(driver, 20).until(
-                    EC.element_to_be_clickable(
-                        (By.CSS_SELECTOR, ".Button__modern___cqCp7")
-                    )
+                # Username field
+                username_field = WebDriverWait(driver, 20).until(
+                    EC.element_to_be_clickable((By.ID, "j_username"))
                 )
-                login_button.click()
+                username_field.click()
+                try:
+                    username_field.clear()
+                except Exception:
+                    pass
+                username_field.send_keys(username)
+
+                # Password field
+                password_field = WebDriverWait(driver, 20).until(
+                    EC.element_to_be_clickable((By.ID, "j_password"))
+                )
+                password_field.click()
+                try:
+                    password_field.clear()
+                except Exception:
+                    pass
+                password_field.send_keys(password)
+
+                # Prefer submitting via Enter to avoid flaky button selectors
+                password_field.send_keys(Keys.ENTER)
+
+                # Fallback: try clicking a submit button if Enter did nothing
+                try:
+                    WebDriverWait(driver, 6).until(check_if_page_loaded)
+                except TimeoutException:
+                    try:
+                        submit_btn = WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']"))
+                        )
+                        submit_btn.click()
+                    except TimeoutException:
+                        # Last resort: original selector (may change over time)
+                        login_button = WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable((By.CSS_SELECTOR, ".Button__modern___cqCp7"))
+                        )
+                        login_button.click()
+
                 WebDriverWait(driver, 20).until(check_if_page_loaded)
                 print("=====================================================\n")
             except TimeoutException:
@@ -92,8 +124,10 @@ def wellsfargo_init(botObj, WELLSFARGO_EXTERNAL=None, DOCKER=False, loop=None):
                     By.CSS_SELECTOR, ".LineItemLinkList__lineItemLinkList___Dj6vb"
                 )
                 li_elements = auth_list.find_elements(By.TAG_NAME, "li")
+                # Pick factor based on provided phone/text; allow whitespace tolerant match
+                desired_factor = account[2].strip() if len(account) > 2 else ""
                 for li in li_elements:
-                    if account[2] in li.text:
+                    if desired_factor and desired_factor in li.text:
                         li.click()
                         break
                 print("Clicked on phone number")
@@ -325,6 +359,7 @@ def wellsfargo_transaction(WELLSFARGO_o: Brokerage, orderObj: stockOrder, loop=N
         except TimeoutException:
             print("could not get to trade")
             killSeleniumDriver(WELLSFARGO_o)
+            return
 
         account_masks = WELLSFARGO_o.get_account_numbers(key)
         # Use to keep track of an order to know whether to reset the trading screen
@@ -382,6 +417,7 @@ def wellsfargo_transaction(WELLSFARGO_o: Brokerage, orderObj: stockOrder, loop=N
                 traceback.print_exc()
                 print("Could not change account")
                 killSeleniumDriver(WELLSFARGO_o)
+                return
             for s in orderObj.get_stocks():
                 WebDriverWait(driver, 20).until(check_if_page_loaded)
                 # If an order fails need to sort of reset the tradings screen. Refresh does not work

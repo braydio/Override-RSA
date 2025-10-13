@@ -129,15 +129,33 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
         # Split the login into seperate items
         account = account.split(":")
         # If the debug flag is present, use it, else set it to false
-        debug = bool(account[3]) if len(account) == 4 else False
+        # Parse optional debug flag correctly (treat "1/true/yes/on" as True)
+        if len(account) == 4:
+            debug_flag = str(account[3]).strip().lower()
+            debug = debug_flag in ("1", "true", "yes", "y", "on")
+        else:
+            debug = False
         print(
             f"Initializing session for {name} with headless={headless} debug={debug}"
         )
+        # Ensure a per-session profile directory exists and is writable
+        profile_dir = os.path.join("creds", f"chase_{index}")
+        try:
+            os.makedirs(profile_dir, exist_ok=True)
+        except Exception as mk_err:
+            print(f"Warning: Could not create profile dir '{profile_dir}': {mk_err}")
+            # Fallback to a hidden local creds directory which should be writable
+            profile_dir = os.path.join(".creds", f"chase_{index}")
+            try:
+                os.makedirs(profile_dir, exist_ok=True)
+                print(f"Using fallback profile dir: {profile_dir}")
+            except Exception as mk_err2:
+                print(f"Warning: Could not create fallback profile dir '{profile_dir}': {mk_err2}")
         # Create a ChaseSession class object which automatically configures and opens a browser
         ch_session = session.ChaseSession(
             title=f"chase_{index}",
             headless=headless,
-            profile_path="./creds",
+            profile_path=profile_dir,
             debug=debug,
         )
         # Login to chase
@@ -172,9 +190,30 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
             print_accounts.append(account.mask)
         print(f"The following Chase accounts were found: {print_accounts}")
     except Exception as e:
-        if ch_session is not None:
-            ch_session.close_browser()
+        # Attempt to capture a screenshot for debugging before closing
+        try:
+            if ch_session is not None and getattr(ch_session, "page", None):
+                screenshot_path = os.path.join("creds", f"chase_{index}", "login_error.png")
+                try:
+                    os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
+                except Exception:
+                    pass
+                try:
+                    ch_session.page.screenshot(path=screenshot_path)
+                    print(f"Saved Chase login failure screenshot to: {screenshot_path}")
+                except Exception as ss_err:
+                    print(f"Warning: Could not save failure screenshot: {ss_err}")
+        except Exception:
+            pass
+        # Avoid cascading Playwright errors if the session already stopped
+        try:
+            if ch_session is not None:
+                ch_session.close_browser()
+        except Exception as close_err:
+            print(f"Warning: Error closing Chase browser after failure: {close_err}")
         print(f"Error logging in to Chase: {e}")
+        print("Hint: This often happens if Chase changed their login page. "
+              "Try updating 'chaseinvest-api' or re-running with HEADLESS=false to inspect.")
         print(traceback.format_exc())
         return None
     return [chase_obj, all_accounts]
@@ -232,7 +271,10 @@ def chase_holdings(chase_o: Brokerage, all_accounts: ch_account.AllAccount, loop
         else:
             printHoldings(chase_o, loop)
         finally:
-            ch_session.close_browser()
+            try:
+                ch_session.close_browser()
+            except Exception as close_err:
+                print(f"Warning: Error closing Chase browser: {close_err}")
 
 
 def chase_transaction(
@@ -375,7 +417,10 @@ def chase_transaction(
                 printAndDiscord(f"{key} {account}: Error submitting order: {e}", loop)
                 print(traceback.format_exc())
                 continue
-        ch_session.close_browser()
+        try:
+            ch_session.close_browser()
+        except Exception as close_err:
+            print(f"Warning: Error closing Chase browser: {close_err}")
     printAndDiscord(
         "All Chase transactions complete",
         loop,

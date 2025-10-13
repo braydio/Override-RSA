@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from webull import webull
 
 from helperAPI import Brokerage, maskString, printAndDiscord, printHoldings, stockOrder
+from webullBrowser import webull_browser_fetch_tokens
+import os
 
 MAX_WB_RETRIES = 3  # Number of times to retry logging in if not successful
 MAX_WB_ACCOUNTS = 11  # Different account types
@@ -30,6 +32,46 @@ def place_order(obj: webull, account: str, orderObj: stockOrder, s: str):
 
 
 # Initialize Webull
+def _wb_debug():
+    return str(os.getenv('WB_DEBUG') or os.getenv('DEBUG') or '').lower() in (
+        '1', 'true', 'yes', 'on'
+    )
+
+
+def _wb_unsafe():
+    return str(os.getenv('WB_UNSAFE_LOG_CREDS') or '').lower() in (
+        '1', 'true', 'yes', 'on'
+    )
+
+
+def _wb_log(label, obj=None):
+    if not _wb_debug():
+        return
+    try:
+        if obj is None:
+            print(f"[WB-DEBUG] {label}")
+        else:
+            print(f"[WB-DEBUG] {label}: {obj}")
+    except Exception:
+        pass
+
+
+def _wb_redact(val):
+    if _wb_unsafe():
+        return val
+    if isinstance(val, dict):
+        sens = {
+            'pwd', 'password', 'pass', 'accessToken', 'refreshToken', 't_token',
+            'access_token', 'trade_pin', 'trading_pin', 'uuid', 'Authorization',
+            'authorization', 'Cookie', 'cookie', 'Set-Cookie', 'set-cookie',
+            'secAccountId', 'account', 'code', 'mfa'
+        }
+        return {k: ('***' if k in sens else _wb_redact(v)) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_wb_redact(v) for v in val]
+    return val
+
+
 def webull_init(WEBULL_EXTERNAL=None):
     # Initialize .env file
     load_dotenv()
@@ -56,7 +98,47 @@ def webull_init(WEBULL_EXTERNAL=None):
             for i in range(MAX_WB_RETRIES):
                 wb = webull()
                 wb.set_did(account[2])
-                wb.login(account[0], account[1])
+                # Token-based fast path if provided via env (grabbed from browser)
+                access_token = os.getenv('WEBULL_ACCESS_TOKEN')
+                refresh_token = os.getenv('WEBULL_REFRESH_TOKEN')
+                token_expire = os.getenv('WEBULL_TOKEN_EXPIRE', '')
+                uuid = os.getenv('WEBULL_UUID', '')
+                if access_token and refresh_token:
+                    _wb_log('init.api_login.attempt', _wb_redact({
+                        'access_token': access_token,
+                        'refresh_token': refresh_token,
+                        'uuid': uuid,
+                        'token_expire': token_expire
+                    }))
+                    wb.api_login(access_token, refresh_token, token_expire, uuid)
+                    # Attempt a refresh to validate tokens
+                    try:
+                        wb.refresh_login()
+                    except Exception as _:
+                        pass
+                    id_test = wb.get_account_id(0)
+                    if id_test is not None:
+                        break
+
+                # Kick off security question flow to establish cookies/headers if required
+                try:
+                    wb.get_security(account[0])
+                except Exception:
+                    pass
+                # Normalize phone format to +1-########## if needed
+                username = account[0]
+                if (
+                    username.isdigit() and len(username) == 10
+                ):
+                    username = f"+1-{username}"
+                if _wb_debug():
+                    _wb_log('init.parsed_credentials', _wb_redact({
+                        'username': username,
+                        'password': account[1],
+                        'did': account[2],
+                        'trade_pin': account[3]
+                    }))
+                wb.login(username, account[1], device_name="webull-web")
                 wb.get_trade_token(account[3])
                 id_test = wb.get_account_id(0)
                 if id_test is not None:
@@ -86,7 +168,46 @@ def webull_init(WEBULL_EXTERNAL=None):
         except Exception as e:
             print(traceback.format_exc())
             print(f"Error: Unable to log in to Webull: {e}")
-            return None
+            # Optional browser-based token capture fallback
+            try:
+                if str(os.getenv('WEBULL_BROWSER_LOGIN') or '').lower() in ('1','true','yes','on'):
+                    headless = str(os.getenv('HEADLESS', 'true')).lower() == 'true'
+                    print("Attempting browser-based Webull login to capture tokens...")
+                    login_url = os.getenv(
+                        'WEBULL_LOGIN_URL',
+                        'https://passport.webull.com/auth/simple/login?redirect_uri=https%3A%2F%2Fapp.webull.com%2Fwatch'
+                    )
+                    tokens = webull_browser_fetch_tokens(account[0], account[1], headless=headless, login_url=login_url)
+                    if not tokens or not tokens.get('accessToken'):
+                        raise Exception('Browser login did not return tokens')
+                    wb = webull()
+                    wb.set_did(account[2])
+                    # Some flows may only yield an access token in cookies; refresh may be blank
+                    wb.api_login(tokens.get('accessToken',''), tokens.get('refreshToken',''), tokens.get('tokenExpireTime',''), tokens.get('uuid',''))
+                    try:
+                        wb.refresh_login()
+                    except Exception:
+                        pass
+                    id_test = wb.get_account_id(0)
+                    if id_test is None:
+                        raise Exception('API session not valid after browser login')
+                    wb_obj.set_logged_in_object(name, wb, "wb")
+                    wb_obj.set_logged_in_object(name, account[3], "trading_pin")
+                    for i in range(MAX_WB_ACCOUNTS):
+                        id = wb.get_account_id(i)
+                        if id is None:
+                            break
+                        ac = wb.get_account(v2=True)["accountSummaryVO"]
+                        wb_obj.set_account_number(name, ac["accountNumber"])
+                        print(maskString(ac["accountNumber"]))
+                        wb_obj.set_logged_in_object(name, id, ac["accountNumber"])
+                        wb_obj.set_account_type(name, ac["accountNumber"], ac["accountTypeName"])
+                        wb_obj.set_account_totals(name, ac["accountNumber"], ac["netLiquidationValue"])
+                else:
+                    return None
+            except Exception as be:
+                print(f"Webull browser-based login failed: {be}")
+                return None
         print("Logged in to Webull!")
     return wb_obj
 

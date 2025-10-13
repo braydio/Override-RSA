@@ -19,6 +19,46 @@ from schwab_api import urls
 from helperAPI import Brokerage, maskString, printAndDiscord, printHoldings, stockOrder
 
 
+def _ensure_cache_dir(preferred: str, fallback: str):
+    try:
+        os.makedirs(preferred, exist_ok=True)
+        return preferred
+    except Exception as e:
+        print(f"Warning: Could not create cache dir '{preferred}': {e}")
+        try:
+            os.makedirs(fallback, exist_ok=True)
+            print(f"Using fallback cache dir: {fallback}")
+            return fallback
+        except Exception as e2:
+            print(f"Warning: Could not create fallback cache dir '{fallback}': {e2}")
+            return preferred
+
+
+def _diagnose_positions(schwab: Schwab):
+    try:
+        sess = schwab.get_session()
+        r = sess.get(urls.positions_v2(), headers=schwab.headers)
+        print(f"positions_v2 status_code={r.status_code}")
+        snippet = r.text[:500].replace("\n", " ")
+        print(f"positions_v2 response (first 500 chars): {snippet}")
+        return r.status_code
+    except Exception as e:
+        print(f"Warning: Unable to fetch positions_v2 for diagnostics: {e}")
+        return None
+
+
+def _get_account_info_guarded(schwab: Schwab, name: str):
+    try:
+        account_info = schwab.get_account_info_v2()
+        if not isinstance(account_info, dict):
+            raise TypeError("Account info is not a dict")
+        return account_info
+    except Exception as info_error:
+        print(f"Error retrieving account info for {name}: {info_error}")
+        status = _diagnose_positions(schwab)
+        return None, status
+
+
 def schwab_init(SCHWAB_EXTERNAL=None):
     """Log into Schwab and return a :class:`Brokerage` object.
 
@@ -55,10 +95,12 @@ def schwab_init(SCHWAB_EXTERNAL=None):
         try:
             account = account.split(":")
             username = account[0]
+            cache_dir = _ensure_cache_dir("creds", ".creds")
             print(
-                f"Starting login {index} for {maskString(username)} with cache ./creds/schwab{index}.json"
+                f"Starting login {index} for {maskString(username)} with cache {os.path.join(cache_dir, f'schwab{index}.json')}"
             )
-            schwab = Schwab(session_cache=f"./creds/schwab{index}.json")
+            session_cache_path = os.path.join(cache_dir, f"schwab{index}.json")
+            schwab = Schwab(session_cache=session_cache_path)
             totp = None if account[2] == "NA" else account[2]
             if totp:
                 print("Using provided TOTP secret")
@@ -72,16 +114,42 @@ def schwab_init(SCHWAB_EXTERNAL=None):
             )
             print(f"Login result for {name}: {success}")
 
-            try:
-                account_info = schwab.get_account_info_v2()
-            except Exception as info_error:
-                print(f"Error retrieving account info for {name}: {info_error}")
-                sess = schwab.get_session()
-                r = sess.get(urls.positions_v2(), headers=schwab.headers)
-                print(f"positions_v2 status_code={r.status_code}")
-                snippet = r.text[:500].replace("\n", " ")
-                print(f"positions_v2 response (first 500 chars): {snippet}")
-                raise
+            # Fetch account info with diagnostics and retry logic
+            result = _get_account_info_guarded(schwab, name)
+            if isinstance(result, tuple):
+                account_info, status = result
+            else:
+                account_info, status = result, None
+
+            if account_info is None:
+                # If we got a 431 or non-JSON response, try a cache reset and re-login
+                should_retry = status == 431 or status is None
+                if should_retry:
+                    print(f"{name}: Retrying login with fresh session cache due to invalid account info (status={status})")
+                    try:
+                        try:
+                            os.remove(session_cache_path)
+                            print(f"Removed stale session cache: {session_cache_path}")
+                        except Exception:
+                            pass
+                        fresh_cache_path = os.path.join(cache_dir, f"schwab{index}_fresh.json")
+                        schwab = Schwab(session_cache=fresh_cache_path)
+                        success = schwab.login(
+                            username=username,
+                            password=account[1],
+                            totp_secret=None if account[2] == "NA" else account[2],
+                        )
+                        print(f"Login result for {name} (fresh session): {success}")
+                        result2 = _get_account_info_guarded(schwab, name)
+                        if isinstance(result2, tuple):
+                            account_info, status2 = result2
+                        else:
+                            account_info, status2 = result2, None
+                        if account_info is None:
+                            print(f"{name}: Still unable to retrieve account info (status={status2}). Aborting.")
+                            raise Exception("Unable to retrieve Schwab account info after retry")
+                    except Exception:
+                        raise
 
             account_list = list(account_info.keys())
             print_accounts = [maskString(a) for a in account_list]
@@ -106,7 +174,14 @@ def schwab_holdings(schwab_o: Brokerage, loop=None):
     for key in schwab_o.get_account_numbers():
         print(f"Gathering holdings for {key}")
         obj: Schwab = schwab_o.get_logged_in_objects(key)
-        all_holdings = obj.get_account_info_v2()
+        try:
+            all_holdings = obj.get_account_info_v2()
+            if not isinstance(all_holdings, dict):
+                raise TypeError("Account info is not a dict")
+        except Exception as e:
+            printAndDiscord(f"{key}: Error getting account info: {e}", loop)
+            _diagnose_positions(obj)
+            continue
         for account in schwab_o.get_account_numbers(key):
             print(f"Processing account {maskString(account)}")
             try:
@@ -206,4 +281,3 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
                     )
                     print(traceback.format_exc())
                 sleep(1)
-
