@@ -13,8 +13,7 @@ import traceback
 from time import sleep
 
 from dotenv import load_dotenv
-from schwab_api import Schwab
-from schwab_api import urls
+from schwab_api import Schwab, urls
 
 from helperAPI import Brokerage, maskString, printAndDiscord, printHoldings, stockOrder
 
@@ -82,7 +81,9 @@ def schwab_init(SCHWAB_EXTERNAL=None):
         return None
 
     accounts = (
-        schwab_env.strip().split(",") if SCHWAB_EXTERNAL is None else SCHWAB_EXTERNAL.strip().split(",")
+        schwab_env.strip().split(",")
+        if SCHWAB_EXTERNAL is None
+        else SCHWAB_EXTERNAL.strip().split(",")
     )
 
     print(f"Accounts provided: {accounts}")
@@ -125,14 +126,18 @@ def schwab_init(SCHWAB_EXTERNAL=None):
                 # If we got a 431 or non-JSON response, try a cache reset and re-login
                 should_retry = status == 431 or status is None
                 if should_retry:
-                    print(f"{name}: Retrying login with fresh session cache due to invalid account info (status={status})")
+                    print(
+                        f"{name}: Retrying login with fresh session cache due to invalid account info (status={status})"
+                    )
                     try:
                         try:
                             os.remove(session_cache_path)
                             print(f"Removed stale session cache: {session_cache_path}")
                         except Exception:
                             pass
-                        fresh_cache_path = os.path.join(cache_dir, f"schwab{index}_fresh.json")
+                        fresh_cache_path = os.path.join(
+                            cache_dir, f"schwab{index}_fresh.json"
+                        )
                         schwab = Schwab(session_cache=fresh_cache_path)
                         success = schwab.login(
                             username=username,
@@ -146,8 +151,12 @@ def schwab_init(SCHWAB_EXTERNAL=None):
                         else:
                             account_info, status2 = result2, None
                         if account_info is None:
-                            print(f"{name}: Still unable to retrieve account info (status={status2}). Aborting.")
-                            raise Exception("Unable to retrieve Schwab account info after retry")
+                            print(
+                                f"{name}: Still unable to retrieve account info (status={status2}). Aborting."
+                            )
+                            raise Exception(
+                                "Unable to retrieve Schwab account info after retry"
+                            )
                     except Exception:
                         raise
 
@@ -209,7 +218,9 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
     print()
     # Use each account (unless specified in .env)
     purchase_accounts = os.getenv("SCHWAB_ACCOUNT_NUMBERS", "").strip().split(":")
-    print(f"Restricted accounts: {purchase_accounts if purchase_accounts != [''] else 'None'}")
+    print(
+        f"Restricted accounts: {purchase_accounts if purchase_accounts != [''] else 'None'}"
+    )
     for s in orderObj.get_stocks():
         print(f"Submitting orders for {s}")
         for key in schwab_o.get_account_numbers():
@@ -261,7 +272,9 @@ def schwab_transaction(schwab_o: Brokerage, orderObj: stockOrder, loop=None):
                             account_id=account,
                             dry_run=orderObj.get_dry(),
                         )
-                        print(f"trade retry returned success={success} messages={messages}")
+                        print(
+                            f"trade retry returned success={success} messages={messages}"
+                        )
                         printAndDiscord(
                             (
                                 f"{key} account {print_account}: The order verification was "

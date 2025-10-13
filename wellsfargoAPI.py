@@ -95,13 +95,17 @@ def wellsfargo_init(botObj, WELLSFARGO_EXTERNAL=None, DOCKER=False, loop=None):
                 except TimeoutException:
                     try:
                         submit_btn = WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']"))
+                            EC.element_to_be_clickable(
+                                (By.XPATH, "//button[@type='submit']")
+                            )
                         )
                         submit_btn.click()
                     except TimeoutException:
                         # Last resort: original selector (may change over time)
                         login_button = WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable((By.CSS_SELECTOR, ".Button__modern___cqCp7"))
+                            EC.element_to_be_clickable(
+                                (By.CSS_SELECTOR, ".Button__modern___cqCp7")
+                            )
                         )
                         login_button.click()
 

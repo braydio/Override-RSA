@@ -361,15 +361,22 @@ if __name__ == "__main__":
                     "ERROR: Invalid channel ID, please check your DISCORD_CHANNEL in your .env file and try again"
                 )
                 os._exit(1)  # Special exit code to restart docker container
-            await channel.send("Running with custom overrides from bind mount 'custom-overrides'.")
+            await channel.send(
+                "Running with custom overrides from bind mount 'custom-overrides'."
+            )
 
         # Custom overrides to run off Order Flowbot orders
         @bot.event
         async def on_message(message):
-            print(f"Received message from {message.author} (ID: {message.author.id}): {message.content}")
+            print(
+                f"Received message from {message.author} (ID: {message.author.id}): {message.content}"
+            )
 
             # Process Order Flowbot commands
-            if message.author.id in {1275369263477166080, 1339755572702220318}: # Order Flowbot ID : Webhook ID
+            if message.author.id in {
+                1275369263477166080,
+                1339755572702220318,
+            }:  # Order Flowbot ID : Webhook ID
                 ctx = await bot.get_context(message)
                 if ctx.valid:
                     print("Invoking RSA command for Order Flowbot message.")
@@ -381,8 +388,12 @@ if __name__ == "__main__":
         # Bot ping-pong
         @bot.command(name="ping")
         async def ping(ctx):
-            print("Using custom overrides from bind mount F:/Shared/Docker/volumes/custom-override.yaml")
-            await ctx.send("Using cusom overrides from bind mount F:/Shared/Docker/volumes/custom-override.yaml")
+            print(
+                "Using custom overrides from bind mount F:/Shared/Docker/volumes/custom-override.yaml"
+            )
+            await ctx.send(
+                "Using cusom overrides from bind mount F:/Shared/Docker/volumes/custom-override.yaml"
+            )
 
         # Help command
         @bot.command()

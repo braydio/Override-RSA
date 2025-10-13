@@ -135,9 +135,7 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
             debug = debug_flag in ("1", "true", "yes", "y", "on")
         else:
             debug = False
-        print(
-            f"Initializing session for {name} with headless={headless} debug={debug}"
-        )
+        print(f"Initializing session for {name} with headless={headless} debug={debug}")
         # Ensure a per-session profile directory exists and is writable
         profile_dir = os.path.join("creds", f"chase_{index}")
         try:
@@ -150,7 +148,9 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
                 os.makedirs(profile_dir, exist_ok=True)
                 print(f"Using fallback profile dir: {profile_dir}")
             except Exception as mk_err2:
-                print(f"Warning: Could not create fallback profile dir '{profile_dir}': {mk_err2}")
+                print(
+                    f"Warning: Could not create fallback profile dir '{profile_dir}': {mk_err2}"
+                )
         # Create a ChaseSession class object which automatically configures and opens a browser
         ch_session = session.ChaseSession(
             title=f"chase_{index}",
@@ -193,7 +193,9 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
         # Attempt to capture a screenshot for debugging before closing
         try:
             if ch_session is not None and getattr(ch_session, "page", None):
-                screenshot_path = os.path.join("creds", f"chase_{index}", "login_error.png")
+                screenshot_path = os.path.join(
+                    "creds", f"chase_{index}", "login_error.png"
+                )
                 try:
                     os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
                 except Exception:
@@ -212,8 +214,10 @@ def chase_init(account: str, index: int, headless=True, botObj=None, loop=None):
         except Exception as close_err:
             print(f"Warning: Error closing Chase browser after failure: {close_err}")
         print(f"Error logging in to Chase: {e}")
-        print("Hint: This often happens if Chase changed their login page. "
-              "Try updating 'chaseinvest-api' or re-running with HEADLESS=false to inspect.")
+        print(
+            "Hint: This often happens if Chase changed their login page. "
+            "Try updating 'chaseinvest-api' or re-running with HEADLESS=false to inspect."
+        )
         print(traceback.format_exc())
         return None
     return [chase_obj, all_accounts]
