@@ -14,5 +14,5 @@ test*
 *.zip
 *.env
 creds/*
-
+*.local
 NO_BRAYDEN_FIDELITY_ENV
